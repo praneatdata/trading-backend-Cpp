@@ -1,0 +1,8 @@
+{
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "files.associations": {
+        "ostream": "cpp",
+        "xstring": "cpp",
+        "unordered_map": "cpp"
+    }
+}
