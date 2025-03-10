@@ -9,10 +9,11 @@ find_package(nlohmann_json REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
 find_package(Asio REQUIRED)
+find_package(Threads REQUIRED)
 
 add_executable(main main.cpp)
 
-target_link_libraries(main PRIVATE CURL::libcurl websocketpp::websocketpp OpenSSL::SSL OpenSSL::Crypto nlohmann_json::nlohmann_json Boost::system asio::asio Boost::boost)
+target_link_libraries(main PRIVATE CURL::libcurl websocketpp::websocketpp OpenSSL::SSL OpenSSL::Crypto nlohmann_json::nlohmann_json Boost::system asio::asio Boost::boost ${CMAKE_THREAD_LIBS_INIT})
 
 if(MSVC)
     # Apply to all build types
@@ -36,3 +37,5 @@ add_compile_definitions(
 )
 
 target_compile_options(main PRIVATE /bigobj)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
