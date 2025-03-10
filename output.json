@@ -1,0 +1,84 @@
+{
+    "authentication_status": true,
+    "order_book": {
+        "jsonrpc": "2.0",
+        "result": {
+            "asks": [
+                [
+                    1909.85,
+                    7777687.0
+                ]
+            ],
+            "best_ask_amount": 7777687.0,
+            "best_ask_price": 1909.85,
+            "best_bid_amount": 8008453.0,
+            "best_bid_price": 1907.95,
+            "bids": [
+                [
+                    1907.95,
+                    8008453.0
+                ]
+            ],
+            "change_id": 21056548084,
+            "current_funding": -4e-06,
+            "estimated_delivery_price": 1910.72,
+            "funding_8h": -0.009627,
+            "index_price": 1910.72,
+            "instrument_name": "ETH-PERPETUAL",
+            "interest_value": -175.79552968322116,
+            "last_price": 1908.1,
+            "mark_price": 1909.28,
+            "max_price": 2100.25,
+            "min_price": 1718.35,
+            "open_interest": 901641016,
+            "settlement_price": 2034.08,
+            "state": "open",
+            "stats": {
+                "high": 2134.25,
+                "low": 1701.5,
+                "price_change": -6.2819,
+                "volume": 29057.696804,
+                "volume_notional": 56177799.0,
+                "volume_usd": 56177799.0
+            },
+            "timestamp": 1741631234483
+        },
+        "testnet": true,
+        "usDiff": 198,
+        "usIn": 1741631234538967,
+        "usOut": 1741631234539165
+    },
+    "order_id": "ETH-21056547024",
+    "order_placement_latency_ms": 607,
+    "positions": {
+        "jsonrpc": "2.0",
+        "result": [
+            {
+                "average_price": 2130.55,
+                "delta": 0.314290803,
+                "direction": "buy",
+                "estimated_liquidation_price": 0.61,
+                "floating_profit_loss": -0.021491095,
+                "index_price": 1910.5,
+                "initial_margin": 0.006286211,
+                "instrument_name": "ETH-PERPETUAL",
+                "interest_value": -175.79552897403855,
+                "kind": "future",
+                "leverage": 50,
+                "maintenance_margin": 0.003457594,
+                "mark_price": 1909.06,
+                "open_orders_margin": 0.0,
+                "realized_funding": 0.004009,
+                "realized_profit_loss": 0.001057905,
+                "settlement_price": 2034.08,
+                "size": 600.0,
+                "size_currency": 0.314290803,
+                "total_profit_loss": -0.032673355
+            }
+        ],
+        "testnet": true,
+        "usDiff": 26275,
+        "usIn": 1741631235050292,
+        "usOut": 1741631235076567
+    }
+}

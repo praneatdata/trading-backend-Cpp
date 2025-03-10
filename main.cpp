@@ -4,6 +4,7 @@
 #include <ctime>
 #include <nlohmann/json.hpp>
 #include "essentials/deribitApi.h"
+#include "essentials/webServer.h"
 
 using namespace std;
 using json = nlohmann::json;
@@ -73,5 +74,10 @@ int main() {
     cout << "Order Placement Latency: " << latency << " ms" << endl;
 
     cout << "Process completed. Output written to output.json" << endl;
+
+    orderBookServer server;
+    server.listen(8080);  // Start listening on port 8080
+    server.run();
+    
     return 0;
 }

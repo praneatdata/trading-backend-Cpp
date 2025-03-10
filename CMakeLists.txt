@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(TradingSystem)
+project(DeribitAPIClient)
 
 add_definitions(-DASIO_STANDALONE -D_WEBSOCKETPP_CPP11_STL_)
 
@@ -11,10 +11,8 @@ find_package(Boost REQUIRED COMPONENTS system)
 find_package(Asio REQUIRED)
 
 add_executable(main main.cpp)
-add_executable(webServer webServer.cpp)
 
-target_link_libraries(main PRIVATE CURL::libcurl nlohmann_json::nlohmann_json)
-target_link_libraries(webServer PRIVATE CURL::libcurl websocketpp::websocketpp OpenSSL::SSL OpenSSL::Crypto nlohmann_json::nlohmann_json Boost::system asio::asio Boost::boost)
+target_link_libraries(main PRIVATE CURL::libcurl websocketpp::websocketpp OpenSSL::SSL OpenSSL::Crypto nlohmann_json::nlohmann_json Boost::system asio::asio Boost::boost)
 
 if(MSVC)
     # Apply to all build types
@@ -27,7 +25,7 @@ if(MSVC)
     >)
 endif()
 
-target_compile_definitions(webServer PRIVATE
+target_compile_definitions(main PRIVATE
     _WEBSOCKETPP_CPP11_STL_
     ASIO_STANDALONE
 )
@@ -37,4 +35,4 @@ add_compile_definitions(
     _WEBSOCKETPP_CPP11_STL_
 )
 
-target_compile_options(webServer PRIVATE /bigobj)
+target_compile_options(main PRIVATE /bigobj)
