@@ -1,127 +1,134 @@
-#include <boost/asio.hpp>
-#include <boost/asio/ssl.hpp>
-#include <boost/beast.hpp>
-#include <boost/json.hpp>
 #include <iostream>
 #include <unordered_map>
 #include <thread>
+#include <chrono>
+#include <functional>
 #include <mutex>
+#include <websocketpp/config/asio.hpp> 
+#include <websocketpp/config/asio_no_tls.hpp>
+#include <websocketpp/config/asio_client.hpp>
+#include <websocketpp/server.hpp>
+#include <websocketpp/client.hpp>
+#include <nlohmann/json.hpp>
 
-namespace asio = boost::asio;
-namespace beast = boost::beast;
-namespace websocket = boost::beast::websocket;
-namespace ssl = boost::asio::ssl;
-namespace json = boost::json;
-using tcp = boost::asio::ip::tcp;
 using namespace std;
+using websocketpp::connection_hdl;
+using websocketpp::lib::placeholders::_1;
+using websocketpp::lib::placeholders::_2;
+using websocketpp::lib::bind;
+using json = nlohmann::json;
+using server = websocketpp::server<websocketpp::config::asio>;
+using client = websocketpp::client<websocketpp::config::asio_tls_client>;
 
-class OrderBookServer {
-public:
-    OrderBookServer(asio::io_context& ioc, uint16_t port)
-        : acceptor_(ioc, tcp::endpoint(tcp::v4(), port)), socket_(ioc) {
-        accept();
-    }
-
-    void run() {
-        cout << "WebSocket server started on port " << acceptor_.local_endpoint().port() << endl;
-    }
-
-private:
-    tcp::acceptor acceptor_;
-    tcp::socket socket_;
-    unordered_map<tcp::socket*, thread> clients_;
-    mutex clients_mutex_;
-
-    void accept() {
-        acceptor_.async_accept(socket_, [this](beast::error_code ec) {
-            if (!ec) {
-                cout << "Client connected!" << endl;
-                handle_client(move(socket_));
-            }
-            accept(); // Accept next connection
-        });
-    }
-
-    void handle_client(tcp::socket socket) {
-        auto ws = make_shared<websocket::stream<tcp::socket>>(move(socket));
-        ws->async_accept([this, ws](beast::error_code ec) {
-            if (!ec) {
-                read_message(ws);
-            }
-        });
-    }
-
-    void read_message(shared_ptr<websocket::stream<tcp::socket>> ws) {
-        auto buffer = make_shared<beast::flat_buffer>();
-        ws->async_read(*buffer, [this, ws, buffer](beast::error_code ec, size_t) {
-            if (!ec) {
-                string msg = beast::buffers_to_string(buffer->data());
-                handle_message(ws, msg);
-                read_message(ws); // Read next message
-            } else {
-                cout << "Client disconnected" << endl;
-            }
-        });
-    }
-
-    void handle_message(shared_ptr<websocket::stream<tcp::socket>> ws, const string& msg) {
-        try {
-            json::value parsed = json::parse(msg);
-            if (parsed.as_object().contains("method") && parsed.as_object().at("method").as_string() == "subscribe") {
-                string symbol = parsed.as_object().at("symbol").as_string().c_str();
-                int depth = parsed.as_object().contains("depth") ? parsed.as_object().at("depth").to_number<int>() : 5;
-                int timeout = parsed.as_object().contains("timeout") ? max(1, parsed.as_object().at("timeout").to_number<int>()) : 5;
-
-                cout << "Client subscribed to " << symbol << endl;
-                thread(&OrderBookServer::fetch_order_book, this, ws, symbol, depth, timeout).detach();
-            }
-        } catch (const exception& e) {
-            cerr << "Error parsing JSON message: " << e.what() << endl;
+class orderBookServer {
+    public:
+        orderBookServer() {
+            server_.init_asio();
+            server_.set_open_handler(bind(&orderBookServer::on_open, this, _1));
+            server_.set_message_handler(bind(&orderBookServer::on_message, this, _1, _2));
+            server_.set_close_handler(bind(&orderBookServer::on_close, this, _1));
         }
-    }
 
-    void fetch_order_book(shared_ptr<websocket::stream<tcp::socket>> ws, string symbol, int depth, int timeout) {
-        try {
-            asio::io_context ioc;
-            ssl::context ctx(ssl::context::tlsv12_client);
-            tcp::resolver resolver(ioc);
-            websocket::stream<ssl::stream<tcp::socket>> ws_client(ioc, ctx);
-
-            auto const results = resolver.resolve("test.deribit.com", "443");
-            asio::connect(ws_client.next_layer().next_layer(), results);
-            ws_client.next_layer().handshake(ssl::stream_base::client);
-            ws_client.handshake("test.deribit.com", "/ws/api/v2");
-
-            while (true) {
-                json::value request = {
-                    {"jsonrpc", "2.0"},
-                    {"method", "public/get_order_book"},
-                    {"params", {{"instrument_name", symbol}, {"depth", depth}}}
-                };
-
-                ws_client.write(asio::buffer(request.as_string()));
-                beast::flat_buffer buffer;
-                ws_client.read(buffer);
-
-                string response = beast::buffers_to_string(buffer.data());
-                ws->write(asio::buffer(response));
-
-                this_thread::sleep_for(chrono::seconds(timeout));
-            }
-        } catch (const exception& e) {
-            cerr << "Error fetching order book: " << e.what() << endl;
+        void listen(uint16_t port) {
+            cout << "listening on PORT: " << port << endl;
+            server_.listen(port);
+            server_.start_accept();
         }
-    }
+
+        void run() {
+            cout << "web socket server started !!" << endl;
+            server_.run();
+        }
+
+    private:
+        server server_;
+        mutex clients_mutex_;
+
+        void on_open(connection_hdl hdl) {
+            lock_guard<mutex> lock(clients_mutex_);
+            cout << "Client connected" << endl;
+        }
+
+        void on_message(connection_hdl hdl, server::message_ptr msg) {
+            lock_guard<mutex> lock(clients_mutex_);
+            string payload = msg->get_payload();
+
+            try {
+                auto json_msg = json::parse(payload);
+                if (json_msg["method"] == "subscribe" && json_msg.contains("symbol")) {
+                    string symbol = json_msg["symbol"];
+                    int depth = (json_msg.contains("depth")) ? json_msg["depth"].get<int>() : 5;                 // default - 5 entries
+                    int timeout = (json_msg.contains("timeout")) ? max(1, json_msg["timeout"].get<int>()) : 5;   // default - 5 seconds and should be 1 sec atleast
+                    cout << "Client subscribed to " << symbol << std::endl;
+
+                    thread(&orderBookServer::send_data, this, hdl, symbol, depth, timeout).detach();
+                }
+            } catch (const exception& e) {
+                cerr << "Error parsing JSON message: " << e.what() << endl;
+            }
+        }
+
+        void on_close(connection_hdl hdl) {
+            lock_guard<mutex> lock(clients_mutex_);
+            cout << "Client disconnected" << endl;
+        }
+
+        void send_data(connection_hdl hdl, const string& symbol, const int& depth, const int& timeout){
+            client deribit_client;
+            string base_url = "wss://test.deribit.com/ws/api/v2";
+            deribit_client.init_asio();
+            
+            // setting up ssl for wss connections
+            websocketpp::lib::shared_ptr<websocketpp::lib::asio::ssl::context> ctx = websocketpp::lib::make_shared<websocketpp::lib::asio::ssl::context>(websocketpp::lib::asio::ssl::context::sslv23);
+            ctx->set_options(websocketpp::lib::asio::ssl::context::default_workarounds);
+            ctx->set_verify_mode(websocketpp::lib::asio::ssl::verify_none); 
+            deribit_client.set_tls_init_handler([ctx](websocketpp::connection_hdl) {
+                return ctx;
+            });
+
+            auto isConnected = make_shared<bool>(true);
+
+            deribit_client.set_message_handler([this, isConnected, hdl](websocketpp::connection_hdl ws_hdl, client::message_ptr msg){
+                string rcvd_data = msg->get_payload();
+                try {
+                    server_.send(hdl, rcvd_data, websocketpp::frame::opcode::text);
+                } catch (const websocketpp::exception& e){
+                    *isConnected = false;
+                    cerr << "Error forwarding data to client - DESUBSCRIBING: " << e.what() << endl;
+                }
+            });
+            
+            deribit_client.set_open_handler([this, symbol, depth, timeout, isConnected, &deribit_client](websocketpp::connection_hdl ws_hdl){
+                thread([this, symbol, depth, timeout, ws_hdl, isConnected, &deribit_client]() {
+                    while (*isConnected) {                        
+                        json msg = {
+                            {"jsonrpc", "2.0"},
+                            {"method", "public/get_order_book"},
+                            {"params", {{"instrument_name", symbol}, {"depth", depth}}}
+                        };
+                        deribit_client.send(ws_hdl, msg.dump(), websocketpp::frame::opcode::text);
+                        this_thread::sleep_for(chrono::seconds(timeout)); // Sleep for {timeout} / {default: 5} seconds
+                    }
+                    deribit_client.close(ws_hdl, websocketpp::close::status::normal, "Closing Deribit connection due to client disconnection.");
+                }).detach();  // in order to run independently 
+            });
+
+            websocketpp::lib::error_code ec;
+            auto con = deribit_client.get_connection(base_url, ec);
+            if (ec) {
+                cerr << "Error initiating WebSocket connection: " << ec.message() << endl;
+                return;
+            }
+
+            deribit_client.connect(con);
+            deribit_client.run();
+        }
 };
 
 int main() {
-    try {
-        asio::io_context ioc;
-        OrderBookServer server(ioc, 8080);
-        server.run();
-        ioc.run();
-    } catch (const exception& e) {
-        cerr << "Server error: " << e.what() << endl;
-    }
+    orderBookServer server;
+    server.listen(8080);
+    server.run();
+
     return 0;
 }
