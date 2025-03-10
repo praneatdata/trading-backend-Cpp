@@ -1,15 +1,22 @@
+/*
+WebSocket Server for Real-Time Order Book Data
+Connects clients to Deribit's cryptocurrency derivatives exchange API
+*/
+
+// ------ Headers ------
 #include <iostream>
 #include <unordered_map>
+#include <unordered_set>
 #include <thread>
 #include <chrono>
 #include <functional>
 #include <mutex>
-#include <websocketpp/config/asio.hpp> 
+#include <websocketpp/config/asio.hpp>       // WebSocket++ ASIO integration
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/config/asio_client.hpp>
 #include <websocketpp/server.hpp>
 #include <websocketpp/client.hpp>
-#include <nlohmann/json.hpp>
+#include <nlohmann/json.hpp>                // JSON parsing/manipulation
 
 using namespace std;
 using websocketpp::connection_hdl;
@@ -17,33 +24,63 @@ using websocketpp::lib::placeholders::_1;
 using websocketpp::lib::placeholders::_2;
 using websocketpp::lib::bind;
 using json = nlohmann::json;
+
+// WebSocket server/client types
 using server = websocketpp::server<websocketpp::config::asio>;
 using client = websocketpp::client<websocketpp::config::asio_tls_client>;
 
+// Custom hash specialization for WebSocket++ connection handles
+namespace std {
+    template<>
+    struct hash<websocketpp::connection_hdl> {
+        size_t operator()(const websocketpp::connection_hdl& hdl) const {
+            auto sp = hdl.lock();  // Convert weak_ptr to shared_ptr for hashing
+            return hash<decltype(sp)>()(sp);
+        }
+    };
+}
+
+// ======== orderBookServer Class ========
 class orderBookServer {
     public:
         orderBookServer() {
+            // Initialize server components
             server_.init_asio();
+            
+            // Register handler callbacks
             server_.set_open_handler(bind(&orderBookServer::on_open, this, _1));
             server_.set_message_handler(bind(&orderBookServer::on_message, this, _1, _2));
             server_.set_close_handler(bind(&orderBookServer::on_close, this, _1));
         }
 
+        // ------ Public Interface ------
         void listen(uint16_t port) {
-            cout << "listening on PORT: " << port << endl;
+            cout << "Listening on PORT: " << port << endl;
             server_.listen(port);
-            server_.start_accept();
+            server_.start_accept();  // Begin accepting connections
         }
 
         void run() {
-            cout << "web socket server started !!" << endl;
-            server_.run();
+            cout << "WebSocket server started!" << endl;
+            server_.run();  // Start the ASIO event loop
         }
 
     private:
-        server server_;
-        mutex clients_mutex_;
+        // ------ Core Components ------
+        server server_;  // WebSocket server instance
+        mutex clients_mutex_;       // Protects client connections
+        mutex subscriptions_mutex_; // Protects subscription data
 
+        // Subscription tracking: <Symbol, Connected Clients>
+        unordered_map<string, 
+            unordered_set<connection_hdl, hash<connection_hdl>,
+                function<bool(const connection_hdl&, const connection_hdl&)>
+            >> subscriptions;
+
+        // Active Deribit connections: <Symbol, WebSocket Client>
+        unordered_map<string, shared_ptr<client>> deribit_connections;
+
+        // ------ Connection Handlers ------
         void on_open(connection_hdl hdl) {
             lock_guard<mutex> lock(clients_mutex_);
             cout << "Client connected" << endl;
@@ -55,16 +92,27 @@ class orderBookServer {
 
             try {
                 auto json_msg = json::parse(payload);
+                
+                // Handle subscription requests
                 if (json_msg["method"] == "subscribe" && json_msg.contains("symbol")) {
                     string symbol = json_msg["symbol"];
-                    int depth = (json_msg.contains("depth")) ? json_msg["depth"].get<int>() : 5;                 // default - 5 entries
-                    int timeout = (json_msg.contains("timeout")) ? max(1, json_msg["timeout"].get<int>()) : 5;   // default - 5 seconds and should be 1 sec atleast
-                    cout << "Client subscribed to " << symbol << std::endl;
+                    int depth = json_msg.value("depth", 5);       // Default 5 levels
+                    int timeout = max(1, json_msg.value("timeout", 5));  // Min 1 sec
+                    
+                    cout << "New subscription to " << symbol << endl;
+                    {
+                        lock_guard<mutex> sub_lock(subscriptions_mutex_);
+                        subscriptions[symbol].insert(hdl);  // Add client to symbol group
+                    }
 
-                    thread(&orderBookServer::send_data, this, hdl, symbol, depth, timeout).detach();
+                    // Create Deribit connection if first subscriber
+                    if (!deribit_connections.count(symbol)) {
+                        thread(&orderBookServer::connect_to_deribit, 
+                             this, symbol, depth, timeout).detach();
+                    }
                 }
             } catch (const exception& e) {
-                cerr << "Error parsing JSON message: " << e.what() << endl;
+                cerr << "JSON Error: " << e.what() << endl;
             }
         }
 
@@ -73,62 +121,92 @@ class orderBookServer {
             cout << "Client disconnected" << endl;
         }
 
-        void send_data(connection_hdl hdl, const string& symbol, const int& depth, const int& timeout){
-            client deribit_client;
-            string base_url = "wss://test.deribit.com/ws/api/v2";
-            deribit_client.init_asio();
-            
-            // setting up ssl for wss connections
-            websocketpp::lib::shared_ptr<websocketpp::lib::asio::ssl::context> ctx = websocketpp::lib::make_shared<websocketpp::lib::asio::ssl::context>(websocketpp::lib::asio::ssl::context::sslv23);
+        // ------ Deribit Integration ------
+        void connect_to_deribit(const string& symbol, int depth, int timeout) {
+            shared_ptr<client> deribit_client = make_shared<client>();
+            deribit_client->init_asio();
+
+            // Configure SSL context for WSS connection
+            auto ctx = websocketpp::lib::make_shared<websocketpp::lib::asio::ssl::context>(
+                websocketpp::lib::asio::ssl::context::sslv23
+            );
             ctx->set_options(websocketpp::lib::asio::ssl::context::default_workarounds);
-            ctx->set_verify_mode(websocketpp::lib::asio::ssl::verify_none); 
-            deribit_client.set_tls_init_handler([ctx](websocketpp::connection_hdl) {
+            ctx->set_verify_mode(websocketpp::lib::asio::ssl::verify_none);
+            
+            deribit_client->set_tls_init_handler([ctx](connection_hdl) {
                 return ctx;
             });
 
             auto isConnected = make_shared<bool>(true);
 
-            deribit_client.set_message_handler([this, isConnected, hdl](websocketpp::connection_hdl ws_hdl, client::message_ptr msg){
-                string rcvd_data = msg->get_payload();
-                try {
-                    server_.send(hdl, rcvd_data, websocketpp::frame::opcode::text);
-                } catch (const websocketpp::exception& e){
-                    *isConnected = false;
-                    cerr << "Error forwarding data to client - DESUBSCRIBING: " << e.what() << endl;
-                }
+            // Handle incoming Deribit messages
+            deribit_client->set_message_handler(
+            [this, isConnected, symbol](connection_hdl, client::message_ptr msg) {
+                broadcast_to_clients(symbol, msg->get_payload());
             });
-            
-            deribit_client.set_open_handler([this, symbol, depth, timeout, isConnected, &deribit_client](websocketpp::connection_hdl ws_hdl){
-                thread([this, symbol, depth, timeout, ws_hdl, isConnected, &deribit_client]() {
-                    while (*isConnected) {                        
+
+            // Handle Deribit connection establishment
+            deribit_client->set_open_handler(
+            [this, symbol, depth, timeout, isConnected, deribit_client](connection_hdl ws_hdl) {
+                thread([this, symbol, depth, timeout, ws_hdl, isConnected, deribit_client]() {
+                    // Regular order book polling
+                    while (*isConnected) {
                         json msg = {
                             {"jsonrpc", "2.0"},
                             {"method", "public/get_order_book"},
-                            {"params", {{"instrument_name", symbol}, {"depth", depth}}}
+                            {"params", {
+                                {"instrument_name", symbol}, 
+                                {"depth", depth}
+                            }}
                         };
-                        deribit_client.send(ws_hdl, msg.dump(), websocketpp::frame::opcode::text);
-                        this_thread::sleep_for(chrono::seconds(timeout)); // Sleep for {timeout} / {default: 5} seconds
+                        deribit_client->send(ws_hdl, msg.dump(), 
+                                           websocketpp::frame::opcode::text);
+                        this_thread::sleep_for(chrono::seconds(timeout));
                     }
-                    deribit_client.close(ws_hdl, websocketpp::close::status::normal, "Closing Deribit connection due to client disconnection.");
-                }).detach();  // in order to run independently 
+                    // Cleanup closed connection
+                    deribit_client->close(ws_hdl, 
+                        websocketpp::close::status::normal, 
+                        "Connection closure");
+                }).detach();
             });
 
+            // Establish Deribit connection
             websocketpp::lib::error_code ec;
-            auto con = deribit_client.get_connection(base_url, ec);
+            auto con = deribit_client->get_connection(
+                "wss://test.deribit.com/ws/api/v2", ec);
+            
             if (ec) {
-                cerr << "Error initiating WebSocket connection: " << ec.message() << endl;
+                cerr << "Connection Error: " << ec.message() << endl;
                 return;
             }
 
-            deribit_client.connect(con);
-            deribit_client.run();
+            {
+                lock_guard<mutex> lock(subscriptions_mutex_);
+                deribit_connections[symbol] = deribit_client;
+            }
+
+            deribit_client->connect(con);
+            deribit_client->run();  // Start Deribit client event loop
+        }
+
+        // ------ Broadcast System ------
+        void broadcast_to_clients(const string& symbol, const string& message) {
+            lock_guard<mutex> lock(subscriptions_mutex_);
+            
+            if (!subscriptions.count(symbol)) return;
+
+            // Send to all subscribed clients
+            for (auto& hdl : subscriptions[symbol]) {
+                server_.send(hdl, message, websocketpp::frame::opcode::text);
+            }
         }
 };
 
+// ======== Main Execution ========
 int main() {
     orderBookServer server;
-    server.listen(8080);
-    server.run();
-
+    server.listen(8080);  // Start listening on port 8080
+    server.run();         // Begin processing connections
+    
     return 0;
 }

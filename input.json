@@ -1,5 +1,6 @@
 {
     "instrument": "ETH-PERPETUAL",
     "quantity": 40,
-    "order_type": "market"
+    "order_type": "market",
+    "buy_sell": 0
 }

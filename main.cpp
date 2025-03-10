@@ -1,9 +1,13 @@
 #include <iostream>
+#include <fstream>
+#include <chrono>
 #include <ctime>
 #include <nlohmann/json.hpp>
 #include "essentials/deribitApi.h"
+
 using namespace std;
 using json = nlohmann::json;
+using namespace std::chrono; // Include for high-precision timing
 
 int main() {
     tradeManager trader;
@@ -23,13 +27,24 @@ int main() {
     string instrument = input["instrument"];
     int quantity = input["quantity"];
     string orderType = input["order_type"];
+    int buy_sell = input["buy_sell"];
 
     // Authentication
     json output;
     output["authentication_status"] = trader.authenticate();
 
-    // Place Order
-    string response = trader.placeOrder(1, instrument, quantity, orderType);
+    // Measure order placement latency
+    auto start_time = high_resolution_clock::now(); // Start timer
+
+    string response = trader.placeOrder(buy_sell, instrument, quantity, orderType);
+
+    auto end_time = high_resolution_clock::now(); // End timer
+
+    // Calculate latency in milliseconds
+    auto latency = duration_cast<milliseconds>(end_time - start_time).count();
+    output["order_placement_latency_ms"] = latency;
+
+    // Parse response
     json orderResponse = json::parse(response);
     
     if (orderResponse.contains("result") && orderResponse["result"].contains("trades")) {
@@ -53,6 +68,9 @@ int main() {
 
     outputFile << output.dump(4); // Pretty print with 4 spaces
     outputFile.close();
+
+    // Print latency to console
+    cout << "Order Placement Latency: " << latency << " ms" << endl;
 
     cout << "Process completed. Output written to output.json" << endl;
     return 0;
