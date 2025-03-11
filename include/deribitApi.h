@@ -54,7 +54,7 @@ class tradeManager {
             if (parsed.contains("result") && parsed["result"].contains("access_token") && parsed["result"].contains("expires_in")) {
                 authToken = "Bearer " + parsed["result"]["access_token"].get<string>();  // Store the access token
                 expiresOn = startTime + (long long)(parsed["result"]["expires_in"]);      // Calculate expiration time
-                cout << "Authorization: " << authToken << endl;
+                // cout << "Authorization: " << authToken << endl;  // Uncomment the line to get bearer token
                 cout << "Token expires in - " << (long long)(parsed["result"]["expires_in"]) << " seconds" << endl;
                 return true;  // Successful authentication
             }

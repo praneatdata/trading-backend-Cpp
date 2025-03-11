@@ -1,5 +1,5 @@
 {
-    "instrument": "ETH-PERPETUAL",
+    "instrument": "BTC-PERPETUAL",
     "quantity": 40,
     "order_type": "market",
     "buy_sell": 0
