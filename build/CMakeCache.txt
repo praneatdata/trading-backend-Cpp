@@ -90,7 +90,7 @@ CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO:STRING=/debug /INCREMENTAL
 CMAKE_FIND_PACKAGE_REDIRECTS_DIR:STATIC=C:/Users/PRANEAT/IdeaProjects/trading-backend-Cpp/build/CMakeFiles/pkgRedirects
 
 //Install path prefix, prepended onto install directories.
-CMAKE_INSTALL_PREFIX:PATH=C:/Program Files (x86)/TradingSystem
+CMAKE_INSTALL_PREFIX:PATH=C:/Program Files (x86)/DeribitAPIClient
 
 //Path to a program.
 CMAKE_LINKER:FILEPATH=C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.43.34808/bin/Hostx64/x64/link.exe
@@ -192,8 +192,8 @@ CMAKE_STATIC_LINKER_FLAGS_RELEASE:STRING=
 // during RELWITHDEBINFO builds.
 CMAKE_STATIC_LINKER_FLAGS_RELWITHDEBINFO:STRING=
 
-//No help, variable specified on the command line.
-CMAKE_TOOLCHAIN_FILE:UNINITIALIZED=C:/src/vcpkg/scripts/buildsystems/vcpkg.cmake
+//The CMake toolchain file
+CMAKE_TOOLCHAIN_FILE:FILEPATH=C:/src/vcpkg/scripts/buildsystems/vcpkg.cmake
 
 //If this value is on, makefiles will be generated without the
 // .SILENT directive, and all commands will be echoed to the console
@@ -230,15 +230,6 @@ SSL_EAY_DEBUG:FILEPATH=C:/src/vcpkg/installed/x64-windows/debug/lib/libssl.lib
 
 //Path to a library.
 SSL_EAY_RELEASE:FILEPATH=C:/src/vcpkg/installed/x64-windows/lib/libssl.lib
-
-//Value Computed by CMake
-TradingSystem_BINARY_DIR:STATIC=C:/Users/PRANEAT/IdeaProjects/trading-backend-Cpp/build
-
-//Value Computed by CMake
-TradingSystem_IS_TOP_LEVEL:STATIC=ON
-
-//Value Computed by CMake
-TradingSystem_SOURCE_DIR:STATIC=C:/Users/PRANEAT/IdeaProjects/trading-backend-Cpp
 
 //Automatically copy dependencies into the output directory for
 // executables.
