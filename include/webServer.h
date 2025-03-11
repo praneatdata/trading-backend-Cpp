@@ -33,6 +33,15 @@ namespace std {
         }
     };
 }
+namespace std {
+    template<>
+    struct equal_to<websocketpp::connection_hdl> {
+        bool operator()(const websocketpp::connection_hdl& lhs,
+                       const websocketpp::connection_hdl& rhs) const {
+            return !lhs.owner_before(rhs) && !rhs.owner_before(lhs);
+        }
+    };
+}
 
 // ======== orderBookServer Class ========
 class orderBookServer {
@@ -67,9 +76,14 @@ class orderBookServer {
 
         // Subscription tracking: <Symbol, Connected Clients>
         unordered_map<string, 
-            unordered_set<connection_hdl, hash<connection_hdl>,
-                function<bool(const connection_hdl&, const connection_hdl&)>
-            >> subscriptions;
+        unordered_set<connection_hdl, 
+        hash<connection_hdl>,
+        equal_to<connection_hdl>  // Explicit equal_to specification
+        >> subscriptions;
+        unordered_map<connection_hdl, unordered_set<string>, 
+        hash<connection_hdl>, 
+        equal_to<connection_hdl>  // Add equality comparison
+        > connection_symbols;
 
         // Active Deribit connections: <Symbol, WebSocket Client>
         unordered_map<string, shared_ptr<client>> deribit_connections;
@@ -77,7 +91,7 @@ class orderBookServer {
         // ------ Connection Handlers ------
         void on_open(connection_hdl hdl) {
             lock_guard<mutex> lock(clients_mutex_);
-            cout << "Client connected" << endl;
+            connection_symbols[hdl] = {};
         }
 
         void on_message(connection_hdl hdl, server::message_ptr msg) {
@@ -105,6 +119,27 @@ class orderBookServer {
                              this, symbol, depth, timeout).detach();
                     }
                 }
+                else if (json_msg["method"] == "unsubscribe" && json_msg.contains("symbol")) {
+                    string symbol = json_msg["symbol"];
+                    {
+                        lock_guard<mutex> sub_lock(subscriptions_mutex_);
+                        if (subscriptions.count(symbol)) {
+                            subscriptions[symbol].erase(hdl);
+                            
+                            // Remove symbol entry if no subscribers left
+                            if (subscriptions[symbol].empty()) {
+                                subscriptions.erase(symbol);
+                                
+                                // Cleanup Deribit connection
+                                if (deribit_connections.count(symbol)) {
+                                    deribit_connections[symbol]->stop();
+                                    deribit_connections.erase(symbol);
+                                }
+                            }
+                        }
+                    }
+                    cout << "Unsubscribed from " << symbol << endl;
+                }
             } catch (const exception& e) {
                 cerr << "JSON Error: " << e.what() << endl;
             }
@@ -112,7 +147,11 @@ class orderBookServer {
 
         void on_close(connection_hdl hdl) {
             lock_guard<mutex> lock(clients_mutex_);
-            cout << "Client disconnected" << endl;
+            // Cleanup all subscriptions for disconnected client
+            for (auto& symbol : connection_symbols[hdl]) {
+                subscriptions[symbol].erase(hdl);
+            }
+            connection_symbols.erase(hdl);
         }
 
         // ------ Deribit Integration ------
