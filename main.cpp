@@ -2,9 +2,8 @@
 #include <fstream>
 #include <chrono>
 #include <ctime>
-#include <nlohmann/json.hpp>
-#include "essentials/deribitApi.h"
-#include "essentials/webServer.h"
+#include "include/deribitApi.h"
+#include "include/webServer.h"
 
 using namespace std;
 using json = nlohmann::json;
