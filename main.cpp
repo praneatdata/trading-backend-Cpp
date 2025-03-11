@@ -77,9 +77,32 @@ int main() {
 
     //Implementation of the Websocket 
 
-    orderBookServer server;
-    server.listen(8080);  // Start listening on port 8080
-    server.run();
+    // 1. Initialize Server
+    orderBookServer obServer;
+    
+    // 2. Start server on port 9002 in separate thread
+    thread server_thread([&obServer]() {
+        obServer.listen(8080);
+        obServer.run();
+    });
+
+    // 3. Latency reporting thread
+    thread stats_thread([&obServer]() {
+        while(true) {
+            this_thread::sleep_for(10s);
+            obServer.print_latency_stats();
+        }
+    });
+
+    // 4. Graceful shutdown handling
+    signal(SIGINT, [](int) { 
+        cout << "\nShutting down...\n";
+        exit(0);
+    });
+
+    // Keep main thread alive
+    server_thread.join();
+    stats_thread.join();
 
     return 0;
 }

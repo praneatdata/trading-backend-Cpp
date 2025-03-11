@@ -18,7 +18,7 @@ target_link_libraries(main PRIVATE CURL::libcurl websocketpp::websocketpp OpenSS
 if(MSVC)
     # Apply to all build types
     add_compile_options(/bigobj)
-    
+    add_compile_options(/std:c++17 /permissive-)
     # Reduce debug section bloat
     add_compile_options($<$<CONFIG:Debug>:
         /Zc:inline
@@ -39,3 +39,4 @@ add_compile_definitions(
 target_compile_options(main PRIVATE /bigobj)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)

@@ -101,20 +101,24 @@ class orderBookServer {
             }
         
             // Get timestamp
+
             time_t now = time(nullptr);
-            struct tm tm;
-            localtime_s(&tm, &now);
+            struct tm tm_info {};
+            struct tm* tm_ptr = localtime(&now);
+            if(tm_ptr) tm_info = *tm_ptr;
+
+            file << put_time(&tm_info, "%FT%T") << ",";
             
             for (const auto& [name, metric] : latency_stats) {
-                const uint64_t count = metric.count.load();
+                const uint64_t count = metric.count.load(std::memory_order_relaxed);
                 if (count == 0) continue;
         
                 file << put_time(&tm, "%FT%T") << ","
                      << name << ","
-                     << metric.min.load() << ","
-                     << metric.max.load() << ","
-                     << metric.total.load()/count << ","
-                     << count << "\n";
+                     << static_cast<uint64_t>(metric.min.load()) << ","
+                     << static_cast<uint64_t>(metric.max.load()) << ","
+                     << static_cast<uint64_t>(metric.total.load())/count << ","
+                     << static_cast<uint64_t>(count) << "\n";
             }
         }
 
