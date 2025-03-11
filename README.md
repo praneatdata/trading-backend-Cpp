@@ -104,7 +104,7 @@ Once the server is running, you can test the WebSocket connection using **Postma
   ```sh
   ws://localhost:8080
   ```
-- **Sample Message**  
+- **Sample Message to subscribe**  
   ```json
   {
       "method": "subscribe",
@@ -113,7 +113,13 @@ Once the server is running, you can test the WebSocket connection using **Postma
       "timeout": 3
   }
   ```
-
+- **Sample Message to unsubscribe**
+  ```json
+  {
+      "method": "unsubscribe",
+      "symbol": "ETH-PERPETUAL"
+  }
+  ```
 ---
 
 ## **Project Structure**  
